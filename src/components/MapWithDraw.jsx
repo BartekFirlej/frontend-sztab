@@ -49,12 +49,49 @@ const MapWithDraw = () => {
   const [layers, setLayers] = useState([]);
   const [targets, setTargets] = useState([]);
   const [drones, setDrones] = useState([]);
+  const [crucialPlaces, setCrucialPlaces] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Handle creation of drawn layers
-  const onCreated = (e) => {
+  const onCreated = async (e) => {
     const { layerType, layer } = e;
-    console.log(`Created layer of type: ${layerType}`);
+
+    // Check if the layer is a marker
+    if (layerType === "marker") {
+      const { lat, lng } = layer.getLatLng();
+      console.log("New marker created at:", lat, lng);
+
+      // Leaflet's internal ID (not part of the public API)
+      const leafletId = layer._leaflet_id;
+      console.log("Using Leaflet ID as objectId:", leafletId);
+
+      try {
+        const response = await fetch("http://localhost:5213/crucialplaces", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            objectId: leafletId,
+            x: lat,
+            y: lng,
+            comment: "test",
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Server response:", data);
+      } catch (error) {
+        console.error("Error posting marker data:", error);
+      }
+    } else {
+      console.log(`Created layer of type: ${layerType}`);
+    }
+
+    // Add the new layer to your array of layers if needed
     setLayers((prevLayers) => [...prevLayers, layer]);
   };
 
@@ -69,7 +106,7 @@ const MapWithDraw = () => {
   // Polling for targets
   const fetchTargets = async () => {
     try {
-      const response = await fetch("https://localhost:7135/targets");
+      const response = await fetch("http://localhost:5213/targets");
       if (!response.ok) {
         throw new Error("Failed to fetch targets");
       }
@@ -84,23 +121,38 @@ const MapWithDraw = () => {
     try {
       const response = await fetch("http://localhost:5219/flights/positions");
       if (!response.ok) {
-        throw new Error("Failed to fetch positions");
+        throw new Error("Failed to fetch drones");
       }
       const data = await response.json();
       setDrones(data);
     } catch (error) {
-      console.error("Error fetching positions:", error);
+      console.error("Error fetching drones:", error);
+    }
+  };
+
+  const fetchCrucialPlaces = async () => {
+    try {
+      const response = await fetch("http://localhost:5213/crucialplaces");
+      if (!response.ok) {
+        throw new Error("Failed to fetch crucial places");
+      }
+      const data = await response.json();
+      setCrucialPlaces(data);
+    } catch (error) {
+      console.error("Error fetching crucial places:", error);
     }
   };
 
   useEffect(() => {
     fetchTargets();
     fetchDrones();
+    fetchCrucialPlaces();
 
     const interval = setInterval(() => {
       fetchTargets();
       fetchDrones();
-    }, 1500);
+      fetchCrucialPlaces();
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -238,6 +290,31 @@ const MapWithDraw = () => {
                     Podgląd
                   </button>
                 )}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {crucialPlaces.map((place) => (
+          <Marker
+          
+            key={place.crucialplaceid}
+            position={[place.x, place.y]}
+          >
+            <Popup>
+              <div className="space-y-1">
+                <p>
+                  <strong>ID:</strong> {place.crucialplaceid}
+                </p>
+                <p>
+                  <strong>X:</strong> {place.x}
+                </p>
+                <p>
+                  <strong>Y:</strong> {place.y}
+                </p>
+                <p>
+                  <strong>Komentarz:</strong> {place.comment}
+                </p>
               </div>
             </Popup>
           </Marker>
